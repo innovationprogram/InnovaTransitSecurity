@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Innovadores | Control de Tránsito</title>
+    <link rel="icon" href="IP.png" type="image/png">
+
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+    <style>
+        :root {
+            --primary-blue: #005088;
+            --primary-dark: #003a63;
+            --primary-gradient: linear-gradient(135deg, #005088 0%, #003a63 100%);
+            --accent-green: #84BD00;
+            --status-red: #ef4444;
+            --status-yellow: #f59e0b;
+            --status-green: #22c55e;
+            --bg-body: #f4f7f9;
+            --bg-panel: #ffffff;
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+            --border-color: #e2e8f0;
+            --shadow-sm: 0 2px 8px rgba(0,0,0,0.04);
+            --shadow-md: 0 8px 24px rgba(0,0,0,0.08);
+            --shadow-lg: 0 20px 40px rgba(0,0,0,0.12);
+            --radius-md: 12px;
+            --radius-lg: 20px;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Inter', sans-serif; }
+        body { background-color: var(--bg-body); color: var(--text-main); display: flex; height: 100vh; overflow: hidden; }
+
+        #login-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--primary-dark); display: flex; justify-content: center; align-items: center; z-index: 99999; }
+        .login-box { background: white; padding: 40px; border-radius: var(--radius-lg); text-align: center; box-shadow: var(--shadow-lg); width: 320px; }
+        .login-box h2 { color: var(--primary-blue); margin-bottom: 10px; font-weight: 800; }
+        .login-box input { width: 100%; padding: 12px; margin: 15px 0; border: 2px solid var(--border-color); border-radius: 8px; font-size: 16px; outline: none; text-align: center; }
+        .login-box input:focus { border-color: var(--primary-blue); }
+        .login-box button { width: 100%; padding: 12px; background: var(--primary-gradient); color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; }
+
+        .sidebar { width: 280px; background-color: var(--bg-panel); border-right: 1px solid var(--border-color); display: flex; flex-direction: column; z-index: 10; }
+        .logo-container { padding: 28px 24px; display: flex; align-items: center; justify-content: space-between; }
+        .logo-left { display: flex; align-items: center; gap: 14px; }
+        .logo-left img { width: 48px; border-radius: 10px; }
+        .logo-left h1 { font-size: 20px; color: var(--primary-blue); font-weight: 800; line-height: 1.1; }
+
+        .nav-menu { padding: 24px 16px; display: flex; flex-direction: column; gap: 8px; }
+        .nav-item { display: flex; align-items: center; padding: 14px 20px; color: var(--text-muted); text-decoration: none; gap: 14px; font-weight: 600; border-radius: var(--radius-md); transition: all 0.2s; }
+        .nav-item:hover { background-color: var(--bg-body); color: var(--primary-blue); transform: translateX(4px); }
+        .nav-item.active { background: var(--primary-gradient); color: white; }
+
+        .main-content { flex: 1; display: flex; flex-direction: column; overflow-y: auto; }
+        .top-header { background: var(--bg-panel); padding: 20px 32px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); }
+
+        .dashboard-grid { padding: 32px; display: grid; grid-template-columns: 2fr 1fr; gap: 24px; max-width: 1600px; margin: 0 auto; width: 100%; }
+        .map-card { grid-column: 1 / -1; background: var(--bg-panel); border-radius: var(--radius-lg); overflow: hidden; display: flex; flex-direction: column; height: 550px; position: relative; border: 1px solid var(--border-color); }
+        .map-toolbar { padding: 16px 24px; display: flex; gap: 12px; background: var(--bg-panel); border-bottom: 1px solid var(--border-color); z-index: 1000; flex-wrap: wrap; }
+        .map-btn { background: var(--bg-body); border: none; padding: 8px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+        .map-btn.active { background: var(--primary-gradient); color: white; }
+        .map-container { flex: 1; position: relative; }
+
+        .parking-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 48px);
+            gap: 8px;
+            background: rgba(15, 23, 42, 0.9);
+            padding: 24px;
+            border-radius: 16px;
+            box-shadow: var(--shadow-lg);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .spot { width: 48px; height: 58px; display: flex; align-items: center; justify-content: center; color: white; font-weight: 800; font-size: 13px; border-radius: 6px; cursor: pointer; border: 2px solid rgba(255,255,255,0.2); transition: transform 0.2s; }
+        .spot:hover { transform: scale(1.05); }
+        .spot.green { background: linear-gradient(135deg, #22c55e, #16a34a); }
+        .spot.red { background: linear-gradient(135deg, #ef4444, #dc2626); }
+
+        .table-card { background: var(--bg-panel); border-radius: var(--radius-lg); padding: 24px; border: 1px solid var(--border-color); }
+        table { width: 100%; border-collapse: collapse; text-align: left; }
+        th { padding: 14px 16px; color: var(--text-muted); border-bottom: 2px solid var(--border-color); font-size: 12px; text-transform: uppercase; }
+        td { padding: 16px; border-bottom: 1px solid var(--border-color); font-size: 14px; font-weight: 500; vertical-align: middle; }
+        .badge { padding: 6px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; }
+        .badge.transit { background: #fee2e2; color: #b91c1c; }
+        .badge.parked { background: #dcfce7; color: #15803d; }
+        .btn-action { padding: 8px 16px; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 13px; transition: 0.2s; }
+        .btn-action:hover { opacity: 0.9; }
+        .btn-primary { background: var(--primary-gradient); color: white; }
+        .btn-secondary { background: var(--bg-body); color: var(--text-main); border: 1px solid var(--border-color); }
+
+        .gestion-container { padding: 32px; display: none; max-width: 1400px; margin: 0 auto; width: 100%; }
+        .gestion-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; margin-top: 24px; }
+        .admin-card { background: var(--bg-panel); padding: 24px; border-radius: var(--radius-lg); box-shadow: var(--shadow-sm); border: 1px solid var(--border-color); border-top-width: 6px; display: flex; flex-direction: column; }
+        .admin-card.red { border-top-color: var(--status-red); }
+        .admin-card.blue { border-top-color: var(--primary-blue); }
+        .admin-card.green { border-top-color: var(--accent-green); }
+        .admin-card h3 { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 18px; }
+        .admin-card p { font-size: 13px; color: var(--text-muted); margin-bottom: 20px; line-height: 1.5; }
+        .admin-input { width: 100%; padding: 12px; border: 1px solid var(--border-color); border-radius: 8px; margin-bottom: 12px; background: var(--bg-body); font-weight: bold; text-align: center; }
+
+        .yuki-fab { position: fixed; bottom: 30px; right: 30px; width: 65px; height: 65px; background: var(--primary-gradient); border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 25px rgba(0, 80, 136, 0.4); cursor: pointer; z-index: 9000; border: 3px solid white; transition: 0.3s; }
+        .yuki-fab:hover { transform: scale(1.05); }
+        .yuki-badge { position: absolute; top: -5px; right: -5px; background: var(--accent-green); color: white; font-size: 11px; font-weight: 800; padding: 4px 8px; border-radius: 12px; }
+        .yuki-chat-panel { position: fixed; bottom: 110px; right: 30px; width: 380px; height: 600px; background: var(--bg-panel); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); display: flex; flex-direction: column; z-index: 8999; transform: scale(0); opacity: 0; visibility: hidden; transition: all 0.3s; overflow: hidden; border: 1px solid var(--border-color); transform-origin: bottom right; }
+        .yuki-chat-panel.active { transform: scale(1); opacity: 1; visibility: visible; }
+        .yuki-header { background: var(--primary-gradient); padding: 16px; color: white; display: flex; justify-content: space-between; align-items: center; }
+        .yuki-messages { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; background: var(--bg-body); }
+        .msg-bubble { max-width: 85%; padding: 12px 16px; border-radius: 16px; font-size: 14px; }
+        .msg-yuki { background: var(--bg-panel); color: var(--text-main); border: 1px solid var(--border-color); border-bottom-left-radius: 4px; align-self: flex-start; }
+        .msg-user { background: var(--primary-blue); color: white; border-bottom-right-radius: 4px; align-self: flex-end; }
+        .yuki-input-area { padding: 16px; background: var(--bg-panel); display: flex; gap: 10px; border-top: 1px solid var(--border-color); }
+        .yuki-input-area input { flex: 1; padding: 10px; border: 1px solid var(--border-color); border-radius: 20px; outline: none; }
+        .yuki-send-btn { background: var(--primary-gradient); border: none; color: white; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: 0.2s; }
+        .yuki-send-btn:hover { opacity: 0.9; }
+
+        @media (max-width: 768px) {
+            body { flex-direction: column; }
+            .sidebar { width: 100%; height: auto; border-right: none; border-top: 1px solid var(--border-color); order: 2; z-index: 10000; background-color: var(--bg-panel); }
+            .logo-container { display: none; }
+            .nav-menu { flex-direction: row; padding: 10px; justify-content: space-around; gap: 0; }
+            .nav-item { flex-direction: column; padding: 8px; font-size: 11px; gap: 4px; }
+            .nav-item:hover { transform: none; }
+            .main-content { order: 1; padding-bottom: 0; }
+            .top-header { padding: 15px 20px; }
+            .top-header h2 { font-size: 20px; }
+            .dashboard-grid, .gestion-grid { grid-template-columns: 1fr; padding: 15px; gap: 15px; }
+            .gestion-container { padding: 15px; }
+            .map-card { height: 450px; }
+            .parking-grid { transform: scale(0.85); transform-origin: center; padding: 15px; }
+            .table-card > div, .admin-card > div { overflow-x: auto; }
+            .login-box { width: 90%; padding: 25px; }
+            .yuki-fab { bottom: 85px; right: 15px; width: 55px; height: 55px; }
+            .yuki-chat-panel { width: 90%; right: 5%; bottom: 150px; height: 60vh; transform-origin: bottom right; }
+        }
+    </style>
+</head>
+<body>
+
+<div id="login-overlay">
+    <div class="login-box">
+        <h2>Acceso Restringido</h2>
+        <p style="font-size: 14px; color: var(--text-muted);">Panel de Seguridad InnovaTransit</p>
+        <input type="password" id="passInput" placeholder="Contraseña">
+        <button onclick="verificarLogin()">Ingresar</button>
+    </div>
+</div>
+
+<aside class="sidebar">
+    <div class="logo-container">
+        <div class="logo-left">
+            <img src="innova.jpg" alt="Logo" onerror="this.src='https://via.placeholder.com/45'">
+            <h1>Innova<br>Schools</h1>
+        </div>
+    </div>
+
+    <nav class="nav-menu">
+        <a href="#" class="nav-item active" onclick="cambiarVista(this, 'mapa')">
+            <span class="material-icons-round">map</span> Mapa Satelital
+        </a>
+        <a href="#" class="nav-item" onclick="cambiarVista(this, 'gestion')">
+            <span class="material-icons-round">admin_panel_settings</span> Gestión Segura
+        </a>
+        <a href="#" class="nav-item" onclick="cambiarVista(this, 'registro')">
+            <span class="material-icons-round">analytics</span> Registro
+        </a>
+    </nav>
+</aside>
+
+<main class="main-content">
+    <header class="top-header">
+        <h2 id="titulo-seccion">Panel Principal</h2>
+    </header>
+
+    <div class="dashboard-grid" id="vista-mapa">
+        <div class="map-card">
+            <div class="map-toolbar">
+                <button class="map-btn active" onclick="cambiarFiltroMapa(this, 'todos')">Ver Todos</button>
+                <button class="map-btn" onclick="cambiarFiltroMapa(this, 'ocupados')">Solo Ocupados</button>
+                <button class="map-btn" onclick="cambiarFiltroMapa(this, 'cuadricula')">
+                    <span class="material-icons-round" style="font-size: 18px;">grid_view</span> Cuadrícula
+                </button>
+            </div>
+
+            <div class="map-container" id="mapa-gratis"></div>
+
+            <div id="vista-cuadricula" style="display: none; flex: 1; justify-content: center; align-items: center; background: var(--bg-body); overflow: auto; padding: 20px;">
+                <div class="parking-grid" id="terreno-exterior"></div>
+            </div>
+        </div>
+
+        <div class="table-card" style="grid-column: 1 / -1;">
+            <h3>Directorio de Estacionamientos</h3>
+            <div style="max-height: 300px; overflow-y: auto; margin-top: 15px;">
+                <table id="parkingTable">
+                    <thead>
+                    <tr>
+                        <th>Espacio</th>
+                        <th>Estado</th>
+                        <th>Placa Correspondiente</th>
+                    </tr>
+                    </thead>
+                    <tbody id="tableBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="gestion-container" id="vista-gestion">
+        <div>
+            <h2 style="color: var(--primary-blue); font-size: 28px; font-weight: 800;">Panel de Seguridad</h2>
+            <p style="color: var(--text-muted);">Gestión de conflictos, reubicación y alertas directas a conductores.</p>
+        </div>
+
+        <div class="gestion-grid">
+            <div class="admin-card red">
+                <h3 style="color: var(--status-red);"><span class="material-icons-round">warning</span> Enviar Alerta Inmediata</h3>
+                <p>La alerta aparecerá como un pop-up en el dispositivo del usuario asociado a la placa.</p>
+                <input type="text" id="alertaPlaca" class="admin-input" placeholder="PLACA (EJ: ABC123)">
+                <textarea id="alertaMsj" class="admin-input" placeholder="Escribe la advertencia aquí..." style="height: 80px; text-align: left;"></textarea>
+                <button class="btn-action" style="background: var(--status-red); color: white; width: 100%;" onclick="emitirAlerta()">Emitir Alerta al Vehículo</button>
+            </div>
+
+            <div class="admin-card blue">
+                <h3 style="color: var(--primary-blue);"><span class="material-icons-round">settings</span> Gestión de Espacios</h3>
+                <p>Resolver conflictos de placas o liberar espacios trabados administrativamente.</p>
+
+                <div style="background: var(--bg-body); padding: 10px; border-radius: 8px; max-height: 200px; overflow-y: auto;">
+                    <table style="font-size: 12px; width: 100%;">
+                        <thead><tr><th>ESPACIO</th><th>PLACA</th><th>ACCIÓN</th></tr></thead>
+                        <tbody id="adminGestionBody">
+                        <tr><td colspan="3" style="text-align:center;">Cargando vehículos...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="admin-card green">
+                <h3 style="color: var(--accent-green);"><span class="material-icons-round">smart_toy</span> Reportes de Yuki</h3>
+                <p>Reportes automáticos de IA por anomalías o conflictos de placas detectados.</p>
+                <div id="yukiReportesContenido" style="background: var(--bg-body); padding: 20px; border-radius: 8px; text-align: center; color: var(--text-muted); font-size: 13px; max-height: 200px; overflow-y: auto;">
+                    No hay anomalías detectadas. <br><br>El estacionamiento opera con normalidad.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="gestion-container" id="vista-registro">
+        <h2 style="color: var(--primary-blue); font-size: 28px; font-weight: 800;">Registro Estadístico</h2>
+        <p style="color: var(--text-muted);">Visualiza la adopción de los espacios y uso total en tiempo real.</p>
+        <div class="table-card" style="margin-top: 24px;">
+            <h3>Vehículos Registrados en el Sistema</h3>
+            <div style="max-height: 400px; overflow-y: auto; margin-top: 15px;">
+                <table id="rankingTable">
+                    <thead><tr><th>Vehículo</th><th>Placa Vehicular</th><th>Uso Registrado</th></tr></thead>
+                    <tbody id="rankingBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="yuki-fab" onclick="toggleYukiChat()">
+        <span class="yuki-badge">Yuki</span>
+        <span class="material-icons-round" style="color: white; font-size: 32px;">smart_toy</span>
+    </div>
+
+    <div class="yuki-chat-panel" id="yukiChatPanel">
+        <div class="yuki-header">
+            <div>
+                <strong>Asistente Yuki 🤖</strong><br>
+                <span style="font-size: 12px; opacity: 0.8;">Innova Schools Sede Chiclayo</span>
+            </div>
+            <button style="background:none; border:none; color:white; cursor:pointer;" onclick="toggleYukiChat()">
+                <span class="material-icons-round">close</span>
+            </button>
+        </div>
+        <div class="yuki-messages" id="yukiMessagesArea">
+            <div class="msg-bubble msg-yuki">¡Hola! Soy Yuki ✨. Tu asistente inteligente. Fui creada por el increíble Grupo 5. ¿En qué te ayudo con los estacionamientos hoy?</div>
+        </div>
+        <div class="yuki-input-area">
+            <input type="text" id="yukiTextInput" placeholder="Pregúntale a Yuki..." onkeypress="if(event.key === 'Enter') sendYukiMessage()">
+            <button class="yuki-send-btn" onclick="sendYukiMessage()"><span class="material-icons-round">send</span></button>
+        </div>
+    </div>
+</main>
+
+<div id="detailsModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:9999; justify-content:center; align-items:center; backdrop-filter: blur(4px);">
+    <div style="background:white; padding:30px; border-radius:20px; text-align:center; width: 320px; box-shadow: 0 10px 25px rgba(0,0,0,0.2);">
+        <h3 style="color: var(--primary-blue); margin-bottom: 15px; font-size: 22px;">Detalles del Espacio <span id="det-espacio"></span></h3>
+
+        <div style="background: var(--bg-body); padding: 15px; border-radius: 12px; margin-bottom: 20px; border: 1px solid var(--border-color);">
+            <p style="font-size: 14px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px;">Placa Registrada</p>
+            <p style="font-size: 24px; font-weight: 800; color: var(--text-main); font-family: monospace; letter-spacing: 2px;" id="det-placa"></p>
+
+            <hr style="border: none; border-top: 1px solid var(--border-color); margin: 15px 0;">
+
+            <p style="font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px;">Hora de Ingreso</p>
+            <p style="font-size: 18px; font-weight: bold; color: var(--primary-blue);" id="det-hora"></p>
+        </div>
+
+        <button class="btn-action btn-primary" style="width:100%; padding: 12px; font-size: 16px;" onclick="document.getElementById('detailsModal').style.display='none'">Cerrar Detalles</button>
+    </div>
+</div>
+
+<script>
+    window.onload = () => {
+        if (sessionStorage.getItem("authPanel") === "true") {
+            document.getElementById('login-overlay').style.display = 'none';
+            iniciarSistema();
+        }
+    };
+
+    function verificarLogin() {
+        if (document.getElementById('passInput').value === "InnovaTransitGrupo5") {
+            sessionStorage.setItem("authPanel", "true");
+            document.getElementById('login-overlay').style.display = 'none';
+            iniciarSistema();
+        } else {
+            alert("Contraseña incorrecta. Acceso denegado.");
+        }
+    }
+
+    function cambiarVista(elemento, vista) {
+        document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+        elemento.classList.add('active');
+
+        document.getElementById('vista-mapa').style.display = vista === 'mapa' ? 'grid' : 'none';
+        document.getElementById('vista-gestion').style.display = vista === 'gestion' ? 'block' : 'none';
+        document.getElementById('vista-registro').style.display = vista === 'registro' ? 'block' : 'none';
+
+        const titulos = { 'mapa': 'Panel Principal - Mapa', 'gestion': 'Gestión Administrativa', 'registro': 'Registros del Sistema' };
+        document.getElementById('titulo-seccion').innerText = titulos[vista];
+
+        if(vista === 'mapa' && map) { setTimeout(() => map.invalidateSize(), 300); }
+    }
+
+    const firebaseConfig = {
+        apiKey: "AIzaSyCkrK_7WxbIqJL20uMssYx-1b3BS5punQI",
+        authDomain: "innovaparking-b7876.firebaseapp.com",
+        databaseURL: "https://innovaparking-b7876-default-rtdb.firebaseio.com",
+        projectId: "innovaparking-b7876",
+        storageBucket: "innovaparking-b7876.firebasestorage.app",
+        messagingSenderId: "1051587205965",
+        appId: "1:1051587205965:web:5d5c6406b70d1fc3e13504"
+    };
+
+    if (!firebase.apps.length) {
+        firebase.initializeApp(firebaseConfig);
+    }
+    const database = firebase.database();
+
+    let map;
+    let marcadoresLayer;
+    let iconNormal, iconOcupado;
+    let estadoGlobal = {};
+    let filtroActual = 'todos';
+
+    const parkingSpotsCoords = [
+        { lat: -6.826896952567946, lng: -79.92368676791544, name: "A1" }, { lat: -6.82693025235926,  lng: -79.92373774503297, name: "A2" }, { lat: -6.826963599061987, lng: -79.92378404622772, name: "A3" }, { lat: -6.827056810746118, lng: -79.92393089715614, name: "A4" }, { lat: -6.827171064060995, lng: -79.92392268316294, name: "A5" },
+        { lat: -6.826916952567946, lng: -79.92365676791544, name: "B1" }, { lat: -6.82695025235926,  lng: -79.92370774503297, name: "B2" }, { lat: -6.826983599061987, lng: -79.92375404622772, name: "B3" }, { lat: -6.827076810746118, lng: -79.92390089715614, name: "B4" }, { lat: -6.827191064060995, lng: -79.92389268316294, name: "B5" },
+        { lat: -6.827278042684312, lng: -79.92435014148151, name: "C1" }, { lat: -6.827256071370563, lng: -79.9243239899465,  name: "C2" }, { lat: -6.8272460844094365, lng: -79.92429582675493, name: "C3" }, { lat: -6.827233434258377, lng: -79.92428174515915, name: "C4" }, { lat: -6.827402546776524, lng: -79.92429247399403, name: "C5" },
+        { lat: -6.827377912279561, lng: -79.92426229913679, name: "D1" }, { lat: -6.827369257629711, lng: -79.92421670158856, name: "D2" }, { lat: -6.8273459519478585, lng: -79.92418249935093, name: "D3" }, { lat: -6.827326641524896, lng: -79.92414762648119, name: "D4" }, { lat: -6.827304681131366, lng: -79.92411478985487, name: "D5" },
+        { lat: -6.827261728812469, lng: -79.92404912298207, name: "E1" }, { lat: -6.827241754890228, lng: -79.9240149248209,  name: "E2" }, { lat: -6.827219783574814, lng: -79.92398944383807, name: "E3" }, { lat: -6.82718649370104,  lng: -79.92412556593058, name: "E4" }, { lat: -6.827162524990505, lng: -79.92408332114326, name: "E5" },
+        { lat: -6.827119425936285, lng: -79.92382847930676, name: "F1" }, { lat: -6.827102780996192, lng: -79.92380098666739, name: "F2" }, { lat: -6.8270808096744044, lng: -79.92377818789328, name: "F3" }, { lat: -6.827052846172469, lng: -79.92373594310592, name: "F4" }, { lat: -6.827001557816475, lng: -79.92387507280762, name: "F5" },
+        { lat: -6.827214375329748, lng: -79.92424425839117, name: "G1" }, { lat: -6.827200393582883, lng: -79.92422749458655, name: "G2" }, { lat: -6.827177090670174, lng: -79.92419530807565, name: "G3" }, { lat: -6.827155785149316, lng: -79.92416110991424, name: "G4" }, { lat: -6.827133813829958, lng: -79.9241329467225, name: "G5" }
+    ];
+
+    function iniciarSistema() {
+        inicializarMapa();
+        generarUIBasica();
+        escucharFirebase();
+    }
+
+    function inicializarMapa() {
+        map = L.map('mapa-gratis').setView([-6.827473, -79.923813], 19);
+
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            maxZoom: 21, attribution: '&copy; Innova Transit'
+        }).addTo(map);
+
+        iconNormal = L.icon({
+            iconUrl: 'https://www.cintermex.com/assets/js/bootstrap-gridmanager/otr/tinymce/plugins/jsplus_file_manager/alphamanager/uploads//imagenes/fotos_generales/Fotos%20factura%20en%20linea/LogoEstacionamiento1.png',
+            iconSize: [28, 28], iconAnchor: [14, 14], popupAnchor: [0, -14]
+        });
+        iconOcupado = L.icon({
+            iconUrl: 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRHrqA06rpQOmZyyxifqLXt7s42OMULizwopAYl3jICcg&s=10',
+            iconSize: [28, 28], iconAnchor: [14, 14], popupAnchor: [0, -14]
+        });
+
+        marcadoresLayer = L.layerGroup().addTo(map);
+        setTimeout(() => { map.invalidateSize(); }, 500);
+    }
+
+    function cambiarFiltroMapa(btn, filtro) {
+        document.querySelectorAll('.map-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        if (filtro === 'cuadricula') {
+            document.getElementById('mapa-gratis').style.display = 'none';
+            document.getElementById('vista-cuadricula').style.display = 'flex';
+        } else {
+            document.getElementById('vista-cuadricula').style.display = 'none';
+            document.getElementById('mapa-gratis').style.display = 'block';
+            filtroActual = filtro;
+            actualizarMarcadores();
+            if(map) { setTimeout(() => map.invalidateSize(), 100); }
+        }
+    }
+
+    function generarUIBasica() {
+        const tableBody = document.getElementById('tableBody');
+        const gridContainer = document.getElementById('terreno-exterior');
+
+        tableBody.innerHTML = ''; gridContainer.innerHTML = '';
+
+        parkingSpotsCoords.forEach(spot => {
+            tableBody.innerHTML += `
+                <tr>
+                    <td><strong>Espacio ${spot.name}</strong></td>
+                    <td><span id="badge-${spot.name}" class="badge parked">Libre</span></td>
+                    <td id="placa-cell-${spot.name}">
+                        <span style="color: var(--text-muted);">Ninguna</span>
+                        <button class="btn-action btn-secondary" style="margin-left:10px; padding:4px 8px; font-size:11px;" onclick="verDetalles('${spot.name}')">Ver Detalles</button>
+                    </td>
+                </tr>`;
+
+            gridContainer.innerHTML += `<div id="spot-${spot.name}" class="spot green" onclick="verDetalles('${spot.name}')">${spot.name}</div>`;
+        });
+    }
+
+    function escucharFirebase() {
+        // Escuchar cambios de estado de estacionamientos
+        database.ref('estacionamientos').on('value', (snapshot) => {
+            estadoGlobal = snapshot.val() || {};
+            actualizarMarcadores();
+            actualizarUICuadricula();
+            actualizarTablaAdmin();
+            actualizarRegistroEstadistico();
+        });
+
+        // Escuchar tabla general de alertas para actualizar el contenedor de "Reportes de Yuki"
+        database.ref('alertas').on('value', (snapshot) => {
+            const dataAlertas = snapshot.val() || {};
+            const contenedor = document.getElementById('yukiReportesContenido');
+            if (!contenedor) return;
+
+            let html = '';
+            Object.keys(dataAlertas).forEach(placa => {
+                html += `
+                    <div style="text-align: left; background: white; padding: 10px; border-radius: 6px; margin-bottom: 8px; border-left: 4px solid var(--status-red); font-size: 12px; box-shadow: var(--shadow-sm);">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <strong style="color: var(--primary-blue);">Placa: ${placa}</strong>
+                            <button onclick="eliminarAlerta('${placa}')" style="background: none; border: none; color: var(--status-red); cursor: pointer; font-size: 10px; font-weight: bold;">Borrar</button>
+                        </div>
+                        <p style="margin-top: 4px; color: var(--text-main);">${dataAlertas[placa].mensaje}</p>
+                    </div>
+                `;
+            });
+
+            if (html === '') {
+                contenedor.innerHTML = 'No hay anomalías detectadas. <br><br>El estacionamiento opera con normalidad.';
+                contenedor.style.textAlign = 'center';
+            } else {
+                contenedor.innerHTML = html;
+                contenedor.style.textAlign = 'left';
+            }
+        });
+
+        // NUEVO: Escuchar CADA NUEVA ALERTA para que Yuki hable en el chat y se abra el panel
+        let alertasInicialesCargadas = false;
+        database.ref('alertas').on('child_added', (snapshot) => {
+            if (!alertasInicialesCargadas) return; // Evitar spam al recargar la página
+
+            const placa = snapshot.key;
+            const data = snapshot.val();
+
+            const mensajeYuki = `🚨 <b>¡Nueva Alerta de Seguridad!</b><br>Se emitió un aviso a la placa: <b>${placa}</b>.<br><br><i>Motivo:</i> "${data.mensaje}"`;
+
+            appendYukiMessage(mensajeYuki, false);
+            document.getElementById('yukiChatPanel').classList.add('active');
+        });
+
+        // Marcar que las alertas iniciales ya cargaron después de conectarse
+        database.ref('alertas').once('value').then(() => {
+            alertasInicialesCargadas = true;
+        });
+    }
+
+    function eliminarAlerta(placa) {
+        database.ref('alertas/' + placa).remove();
+    }
+
+    function actualizarMarcadores() {
+        marcadoresLayer.clearLayers();
+        parkingSpotsCoords.forEach(spot => {
+            const data = estadoGlobal[spot.name] || { estado: false, placa: "" };
+            let mostrar = (filtroActual === 'todos') ? true : data.estado;
+
+            if (mostrar) {
+                let icono = data.estado ? iconOcupado : iconNormal;
+                let desc = data.estado ? `Ocupado por ${data.placa}` : `Libre`;
+                L.marker([spot.lat, spot.lng], { icon: icono })
+                 .bindPopup(`<b>Espacio ${spot.name}</b><br>${desc}`)
+                 .addTo(marcadoresLayer);
+            }
+        });
+    }
+
+    function actualizarUICuadricula() {
+        parkingSpotsCoords.forEach(spot => {
+            const data = estadoGlobal[spot.name] || { estado: false, placa: "" };
+            const badge = document.getElementById(`badge-${spot.name}`);
+            const gridSpot = document.getElementById(`spot-${spot.name}`);
+            const placaCell = document.getElementById(`placa-cell-${spot.name}`);
+
+            if(!badge) return;
+
+            if (data.estado) {
+                badge.className = 'badge transit'; badge.textContent = 'Ocupado';
+                gridSpot.className = 'spot red';
+                placaCell.innerHTML = `<strong>${data.placa}</strong> <button class="btn-action btn-secondary" style="margin-left: 10px; padding: 4px 8px; font-size: 11px;" onclick="verDetalles('${spot.name}')">Ver Detalles</button>`;
+            } else {
+                badge.className = 'badge parked'; badge.textContent = 'Libre';
+                gridSpot.className = 'spot green';
+                placaCell.innerHTML = `<span style="color: var(--text-muted);">Ninguna</span> <button class="btn-action btn-secondary" style="margin-left: 10px; padding: 4px 8px; font-size: 11px;" onclick="verDetalles('${spot.name}')">Ver Detalles</button>`;
+            }
+        });
+    }
+
+    function verDetalles(id) {
+        const data = estadoGlobal[id] || { estado: false, placa: "" };
+        document.getElementById('det-espacio').innerText = id;
+
+        if (data.estado) {
+            document.getElementById('det-placa').innerText = data.placa;
+            let date = new Date(data.timestamp || Date.now());
+            document.getElementById('det-hora').innerText = date.toLocaleTimeString('es-PE', {hour: '2-digit', minute:'2-digit'});
+        } else {
+            document.getElementById('det-placa').innerText = "LIBRE";
+            document.getElementById('det-hora').innerText = "--:--";
+        }
+
+        document.getElementById('detailsModal').style.display = 'flex';
+    }
+
+    function actualizarTablaAdmin() {
+        const tbody = document.getElementById('adminGestionBody');
+        tbody.innerHTML = '';
+        let ocupados = false;
+
+        Object.keys(estadoGlobal).forEach(id => {
+            if (estadoGlobal[id].estado) {
+                ocupados = true;
+                tbody.innerHTML += `
+                    <tr>
+                        <td><strong>${id}</strong></td>
+                        <td>${estadoGlobal[id].placa}</td>
+                        <td>
+                            <button class="btn-action" style="background:var(--status-red); color:white; padding:4px 8px; font-size:11px;" onclick="forzarLiberacion('${id}')">Liberar</button>
+                            <button class="btn-action btn-primary" style="padding:4px 8px; font-size:11px;" onclick="reubicarPlaca('${id}', '${estadoGlobal[id].placa}')">Mover</button>
+                        </td>
+                    </tr>
+                `;
+            }
+        });
+
+        if(!ocupados) tbody.innerHTML = `<tr><td colspan="3" style="text-align:center;">No hay vehículos registrados actualmente.</td></tr>`;
+    }
+
+    function forzarLiberacion(id) {
+        if(confirm(`¿Estás seguro de liberar el espacio ${id}?`)){
+            database.ref('estacionamientos/' + id).set({estado: false, placa: ""});
+        }
+    }
+
+    function reubicarPlaca(idViejo, placa) {
+        const idNuevo = prompt(`¿A qué nuevo espacio libre deseas mover la placa ${placa}? (Ej: A1, B2)`);
+        if(idNuevo) {
+            const nuevo = idNuevo.toUpperCase().trim();
+            if(estadoGlobal[nuevo] && !estadoGlobal[nuevo].estado) {
+                database.ref('estacionamientos/' + idViejo).set({estado: false, placa: ""});
+                database.ref('estacionamientos/' + nuevo).set({estado: true, placa: placa, timestamp: Date.now()});
+                alert("Vehículo reubicado con éxito.");
+            } else {
+                alert("El espacio ingresado no existe o ya está ocupado.");
+            }
+        }
+    }
+
+    function emitirAlerta() {
+        const placa = document.getElementById('alertaPlaca').value.toUpperCase().trim();
+        const msj = document.getElementById('alertaMsj').value.trim();
+        if(placa && msj) {
+            database.ref('alertas/' + placa).set({
+                mensaje: msj,
+                timestamp: Date.now()
+            }).then(() => {
+                document.getElementById('alertaPlaca').value = "";
+                document.getElementById('alertaMsj').value = "";
+            }).catch((error) => {
+                console.error(error);
+                alert("Error de conexión al enviar.");
+            });
+        } else {
+            alert("Completa ambos campos para enviar la alerta.");
+        }
+    }
+
+    function actualizarRegistroEstadistico() {
+        const tbody = document.getElementById('rankingBody');
+        tbody.innerHTML = '';
+
+        let lista = [
+            { id: 'C3', placa: 'XYZ789', tiempo: '08:15 AM' },
+            { id: 'F5', placa: 'QWE456', tiempo: '09:30 AM' },
+            { id: 'A2', placa: 'LMN741', tiempo: '10:45 AM' },
+            { id: 'G4', placa: 'RTY123', tiempo: '11:20 AM' },
+            { id: 'D1', placa: 'UVP963', tiempo: '12:05 PM' }
+        ];
+
+        Object.keys(estadoGlobal).forEach(id => {
+            if(estadoGlobal[id].estado) {
+                let date = new Date(estadoGlobal[id].timestamp || Date.now());
+                lista.unshift({
+                    id: id,
+                    placa: estadoGlobal[id].placa,
+                    tiempo: date.toLocaleTimeString('es-PE', {hour: '2-digit', minute:'2-digit'})
+                });
+            }
+        });
+
+        lista.forEach((item, index) => {
+            let placaCensurada = item.placa.substring(0, 3) + '***';
+            tbody.innerHTML += `
+                <tr>
+                    <td>Vehículo #${index + 1}</td>
+                    <td><span class="badge" style="background:var(--border-color); color:var(--text-main); font-family: monospace; font-size: 14px; letter-spacing: 1px;">${placaCensurada}</span></td>
+                    <td>Ubicado en <strong>${item.id}</strong> (Desde: ${item.tiempo})</td>
+                </tr>
+            `;
+        });
+    }
+
+    const API_KEY_GROQ = "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";
+
+    let chatHistory = [
+        {
+            role: "system",
+            content: "Contexto estricto: A partir de ahora eres Yuki, una asistente inteligente creada única y exclusivamente por el 'Grupo 5' (conformado por Gianella, Pamela, Fernando, Fabrizio, Adolfo y Kristhel) para el sistema de estacionamiento de Innova Schools sede Chiclayo. Si te preguntan quién te creó, mencionarás al Grupo 5 y sus nombres. Responde de forma amable, directa y usando emojis."
+        }
+    ];
+
+    function toggleYukiChat() {
+        document.getElementById('yukiChatPanel').classList.toggle('active');
+    }
+
+    function appendYukiMessage(text, isUser) {
+        const area = document.getElementById('yukiMessagesArea');
+        const div = document.createElement('div');
+        div.className = `msg-bubble ${isUser ? 'msg-user' : 'msg-yuki'}`;
+        div.innerHTML = text;
+        area.appendChild(div);
+        area.scrollTop = area.scrollHeight;
+    }
+
+    async function sendYukiMessage() {
+        const input = document.getElementById('yukiTextInput');
+        const text = input.value.trim();
+        if (!text) return;
+
+        appendYukiMessage(text, true);
+        input.value = '';
+
+        chatHistory.push({ role: "user", content: text });
+
+        try {
+            const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                    "Authorization": `Bearer ${API_KEY_GROQ}`,
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    model: "llama-3.1-8b-instant",
+                    messages: chatHistory,
+                    temperature: 0.7
+                })
+            });
+
+            const data = await response.json();
+            if(data.choices && data.choices[0]) {
+                const reply = data.choices[0].message.content;
+                chatHistory.push({ role: "assistant", content: reply });
+                appendYukiMessage(reply, false);
+            } else {
+                appendYukiMessage("Lo siento, tuve un error procesando tu solicitud.", false);
+            }
+        } catch (error) {
+            appendYukiMessage("Error de conexión con mis servidores. 🐛", false);
+        }
+    }
+</script>
+</body>
+</html>
